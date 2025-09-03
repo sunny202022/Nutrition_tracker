@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "my-nutrition-tracker-app",
+  "private_key_id": "089863275f9c142146600972ce7e8ebbe2f1e42b",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDqrul3ipWUVlOo\nUgflhSWtV3cXM26zyBt3aqt/9CN38s0TT668+93mSpYyCvz0gjyAku/AvEzcL4ED\n0+/4yVUelqf5puC0MHU/bKkUbVSMd1ljkboBMVxCfHjrKz+4E/nxPmpGOGZlVQVQ\nqX4eDKEI5MNkugRzVDDRnAovjXoumvc/O1opuFNTE++gYCzNeJQSm6BbEbHrO8s8\nPYFgQicn2TvaGQE/Aljbc7SUiBNdcHbAbHVXkBc09+GY0udxiuuSjQoPCW5dHrnl\nk4zoBOg28ySk+aNN/jqmQUbo2CCMCpkGycIkZw/S2wcipnsp80j/TwGIm92cyhx9\n4kX0bWMRAgMBAAECggEAAfvCdgr1sOWWxWowg4/4oTb5BwdIJCAsRs9RpqG/tFND\nj8bGvPV8boLVT7CEwFZ/ORL2nqljaq+mUShMZXeNQLnt54GxqntOztEyZRLNQSFU\nNUw5ABx4IXrU8XU1VsRhyZ9liBjX7nsXXIUM3bW0gO+9IiGUV2ITjVO+LIR9ecFY\nRz4xuzuhmI/3b/eEei6YjXxIx9UsBfK0vE456bF9YP9D15XHYM21ckD/WlgB0b2C\n/O8yyCDyrhhJ1xiudsy01xoDUifxie/dreaZpMDLIZYr/XDPRZburrgB0MIMVUmc\nCiGwCY2hbnBKUeXj+5t2nC/fdiIQ+7BFbX0GVp0f5QKBgQD5UFJ91nH1LxBOMZmN\nhbaaaJmbeY23CiPsUIqpwnl0V/kOZGF2AWPZGNvTI5TDK4Q/KC5zzQITffKG4kpS\nx+d67JWKv9Ga+PoxLFQAgVd6pLjgDrnOCoDVMjzZwqEJxNeZJ+BB2lzmuJea6c8h\nKAdpVwQlM6R9jnEPNPlLuRNDLwKBgQDw+iSmDVEuCP+tLBZ6V3AwKhvhmROvE5jC\n+o69+fvdd7YXFl+ki71mxJituVjrPzl5/qilQsiyqI26uKeYprw0f6xTOI0pxcj+\nOhGxxxKL2TaCZBD6GvrUy8VSc3afiGtww5BS4jOB9ugFem0ARGyRtaBsycIeYoCX\nlvbsU/EtvwKBgQCx+WTp7+vp228IYt/65zkzgPgmxN8li1eZmuVhyjJpm2Nvorjw\nRI3CrLxAPWY07Ru6+jQu9mpE/+Ph5iiob4wPdFRMeCJpPtNbxwkwUyTfqDdRuzFo\npJbTmslVqlrLXnmKG607VWZ8TcnsDHyQbsLbsAKFjBggiU6sTGSqabQWgQKBgQCZ\nP5s69tEfo51ltdn9p8my97SPfdgkySOnK8zHSElCiLUGbbYZYLzstC4cnPjNcoHM\n8YSyxIv6AnNPwcrjq3WZNXCT5Czx2dR+yNMj6eQDh/nAZn7db3cBCS3Nx5wyzID3\nT4djDnOPPURE55yWRO1+pLEHPi/zPtVkkh8qICAK5QKBgQCig1XSgdM7VurVp3q0\ntXRclnZrU0TV8rB86bKiycEJsSgGQSbjNlEDqiIjGAfSG3FxKVtJh2pTT1MaIGFF\nNDNByYQGs8DQlXiADmMl8auddoShYwqLrZMwhbSjaDtJyuB0QYp1Vtr/d2Id/b1z\nma39Z6qFgxfyqJ+ABCXa6wzNxg==\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-editor@my-nutrition-tracker-app.iam.gserviceaccount.com",
+  "client_id": "117333844306099667411",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-editor%40my-nutrition-tracker-app.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
