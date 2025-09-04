@@ -10,43 +10,54 @@ from snowflake.snowpark.functions import col, when_matched, when_not_matched
 # ---------------- App Configuration ----------------
 st.set_page_config(layout="wide", page_title="Nutrition & Calorie Tracker", page_icon="🍽️")
 
-# ---------------- Custom CSS ----------------
+# ---------------- Custom CSS for Styling ----------------
 st.markdown("""
 <style>
-    [data-testid="stMetricValue"] { font-size: 1.8em; justify-content: center; }
-    [data-testid="stMetricLabel"] { justify-content: center; }
-    .unsaved-badge {
-        background-color: #FFC107; color: black; padding: 2px 6px;
-        border-radius: 8px; font-size: 0.75em; margin-left: 8px; font-weight: bold;
-    }
+[data-testid="stMetricValue"] {
+    font-size: 1.8em;
+    justify-content: center;
+}
+[data-testid="stMetricLabel"] {
+    justify-content: center;
+}
+.unsaved-badge {
+    background-color: #FFC107;
+    color: black;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 0.75em;
+    margin-left: 8px;
+    font-weight: bold;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------- Snowflake Connection ----------------
 try:
     conn = st.connection("snowflake")
+    session = conn.session()  # Create session object here
 except Exception as e:
-    st.error("Failed to connect to Snowflake. Please check your secrets.toml configuration.")
+    st.error(f"Failed to connect to Snowflake: {str(e)}")
     st.stop()
 
-# ---------------- Snowflake Functions ----------------
-def load_user_profile(user_name: str) -> dict:
+# ---------------- Snowflake Data Functions ----------------
+def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name or isinstance(user_name, list):
         st.error("Invalid user_name parameter (should be a string).")
         return {}
     try:
-        session = conn.session()
+        # Use the global session object
         df = session.table("USER_PROFILE").filter(col("KEY") == user_name).to_pandas()
         if not df.empty:
             try:
                 return json.loads(df.iloc[0]["PROFILE_JSON"])
             except Exception as e:
                 st.warning(f"Could not parse profile JSON: {e}")
+                return {}
         return {}
     except Exception as e:
         st.error(f"Error loading profile for {user_name}: {e}")
         return {}
-
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     if not user_name or isinstance(user_name, list):
@@ -54,7 +65,7 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         return
     try:
         profile_json = json.dumps(profile_data)
-        session = conn.session()
+        # Use the global session object
         target_table = session.table("USER_PROFILE")
         source_df = session.create_dataframe(
             [(user_name, profile_json)],
@@ -68,61 +79,62 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
                 when_not_matched().insert({'KEY': source_df['KEY'], 'PROFILE_JSON': source_df['PROFILE_JSON']})
             ]
         ).collect()
+    except Exception as e:
+        st.error(f"Error saving profile for {user_name}: {e}")
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name or isinstance(user_name, list):
         st.error("Invalid user_name parameter (should be a string).")
         return pd.DataFrame()
     try:
-        session = conn.session()
-        query = f'SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = %s ORDER BY "ID" DESC'
-        df = session.sql(query, [user_name]).to_pandas()
+        # Use the global session object
+        df = session.table("NUTRITION_LOG").filter(col("USER_NAME") == user_name).to_pandas()
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
-
 
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
     if not user_name or isinstance(user_name, list) or not entries:
         st.error("Invalid parameters for saving log batch.")
         return
     try:
-        session = conn.session()
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "user_name": str(user_name),
-                "date": entry["DATE"] if isinstance(entry["DATE"], (str, datetime, date)) else str(entry["DATE"]),
-                "meal": str(entry["MEAL"]),
-                "food": str(entry["FOOD"]),
-                "quantity": float(entry["QUANTITY"]),
-                "cal": float(entry["CALORIES"]),
-                "protein": float(entry["PROTEIN"]),
-                "carbs": float(entry["CARBS"]),
-                "fat": float(entry["FAT"])
+                "USER_NAME": str(user_name),
+                "DATE": entry["DATE"],
+                "MEAL": str(entry["MEAL"]),
+                "FOOD": str(entry["FOOD"]),
+                "QUANTITY": float(entry["QUANTITY"]),
+                "CALORIES": float(entry["CALORIES"]),
+                "PROTEIN": float(entry["PROTEIN"]),
+                "CARBS": float(entry["CARBS"]),
+                "FAT": float(entry["FAT"])
             })
-
+        
+        # Use the global session object
         df_to_save = session.create_dataframe(rows_to_insert)
-        df_to_save.write.mode("append").save_as_table(
-            "NUTRITION_LOG",
-            column_order=["user_name", "date", "meal", "food", "quantity", "cal", "protein", "carbs", "fat"]
-        )
-        st.cache_data.clear()
-        st.session_state.error_message = None
+        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG")
+        
+        st.session_state.new_entries = []  # Clear unsaved entries
     except Exception as e:
-        st.session_state.error_message = f"Failed to save data: {e}"
+        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
         print(traceback.format_exc())
+        st.session_state.error_message = f"Failed to save data: {e}"
 
 def delete_entry_from_db(entry_id: int):
     if isinstance(entry_id, list):
         st.error("Invalid entry_id parameter (should be an int).")
         return
     try:
-        conn.query('DELETE FROM NUTRITION_LOG WHERE "id" = ?', params=[entry_id])
-        st.cache_data.clear()
+        # Use the global session object
+        session.sql(f'DELETE FROM NUTRITION_LOG WHERE "ID" = {entry_id}').collect()
     except Exception as e:
         st.error(f"Error deleting entry: {e}")
+
+# ... [REST OF THE CODE REMAINS THE SAME - FOOD DATABASE, CALCULATIONS, UI] ...
+
 
 # ---------------- Food Database ----------------
 indian_food_data = { 
