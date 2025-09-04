@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
+from datetime import date, datetime, timedelta
 
 # ---------------- Snowflake Connection ----------------
 try:
