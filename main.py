@@ -4,13 +4,10 @@ import json
 import traceback
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, date
-
 # Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
-
 # ---------------- App Configuration ----------------
 st.set_page_config(layout="wide", page_title="Nutrition & Calorie Tracker", page_icon="🍽️")
-
 # ---------------- Custom CSS for Styling ----------------
 st.markdown("""
 <style>
@@ -22,96 +19,12 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
 # ---------------- Snowflake Connection ----------------
 try:
     conn = st.connection("snowflake")
 except Exception as e:
     st.error("Failed to connect to Snowflake. Please check your secrets.toml configuration.")
-    st.stop()
 
-# ---------------- Snowflake Data Functions ----------------
-
-def load_user_profile(user_name: str) -> Dict[str, Any]:
-    if not user_name: return {}
-    try:
-        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name], ttl=0)
-        if not df.empty:
-            try:
-                return json.loads(df.iloc[0]["VALUE"])
-            except Exception as e:
-                st.warning(f"Could not parse profile JSON: {e}")
-                return {}
-        return {}
-    except Exception as e:
-        st.error(f"Error loading profile for {user_name}: {e}")
-        return {}
-
-def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
-    if not user_name: return
-    try:
-        profile_json = json.dumps(profile_data)
-        session = conn.session()
-        target_table = session.table("USER_PROFILE")  # ✅ Define target_table
-        source_df = session.create_dataframe([(user_name, profile_json)], schema=['KEY', 'VALUE'])
-        target_table.merge(
-            source=source_df,
-            join_expr=(target_table['KEY'] == source_df['KEY']),
-            clauses=[
-                when_matched().update({'VALUE': source_df['VALUE']}),
-                when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
-            ]
-        ).collect()   # ✅ force execution
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Error saving profile: {e}")
-
-def load_nutrition_log(user_name: str) -> pd.DataFrame:
-    if not user_name: return pd.DataFrame()
-    try:
-        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name], ttl=0)
-        return df
-    except Exception as e:
-        st.error(f"Error loading nutrition log: {e}")
-        return pd.DataFrame()
-
-def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
-    if not user_name or not entries:
-        return
-    try:
-        session = conn.session()
-        rows_to_insert = []
-        for entry in entries:
-            rows_to_insert.append({
-                "USER_NAME": user_name,
-                "DATE": entry["DATE"],
-                "MEAL": entry["MEAL"],
-                "FOOD": entry["FOOD"],
-                "QUANTITY": entry["QUANTITY"],
-                "CALORIES": entry["CALORIES"],
-                "PROTEIN": entry["PROTEIN"],
-                "CARBS": entry["CARBS"],
-                "FAT": entry["FAT"]
-            })
-        target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
-        df_to_save = session.create_dataframe(rows_to_insert)
-        df_to_save.write.mode("append").save_as_table(
-            "NUTRITION_LOG",
-            column_order=target_columns
-        )
-        st.cache_data.clear()
-        st.session_state.error_message = None
-    except Exception as e:
-        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
-        print(traceback.format_exc())
-        st.session_state.error_message = f"Failed to save data: {e}"
-
-def delete_entry_from_db(entry_id: int):
-    try:
-        conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Error deleting entry: {e}")
 
 # ---------------- Food Database & Calculations (No Changes) ----------------
 # [Your large food database and calculation functions go here - omitted for brevity]
@@ -214,60 +127,23 @@ indian_food_data = {
         12, 14, 22, 25, 12, 14, 15, 14, 12, 20, 18
     ]
 }# Format function
-def format_food_database(data: dict) -> dict:
-    df = pd.DataFrame(data).set_index('Food Item')
-    df = df.rename(columns={'Calories (kcal)': 'cal', 'Protein (g)': 'protein', 
-                            'Carbohydrates (g)': 'carbs', 'Fats (g)': 'fat', 
-                            'Serving Size (g)': 'serving_size_g'})
-    return df.to_dict(orient='index')
-
-FOOD_DB = format_food_database(indian_food_data)
-
-ACTIVITY_MULTIPLIERS = {
-    "Sedentary (office job)": 1.2,
-    "Lightly Active (1-3 days/week exercise)": 1.375,
-    "Moderately Active (3-5 days/week exercise)": 1.55,
-    "Very Active (6-7 days/week exercise)": 1.725,
-    "Extra Active (hard labor, athlete)": 1.9
-}
-
-def calculate_tdee(weight_kg: float, height_cm: float, age: int, gender: str, activity_level: str) -> float:
-    if gender == "Male": 
-        bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * age)
-    else: 
-        bmr = 447.593 + (9.247 * weight_kg) + (3.098 * height_cm) - (4.330 * age)
-    return bmr * ACTIVITY_MULTIPLIERS.get(activity_level, 1.2)
-
-def calculate_targets(base_calories: float, goal: str, weekly_change_kg: float) -> dict:
-    calorie_change_per_day = (weekly_change_kg * 7700) / 7
-    target_calories = base_calories
-    if goal == "Weight Loss": target_calories -= calorie_change_per_day
-    elif goal == "Muscle Gain": target_calories += calorie_change_per_day
-    target_calories = max(1200, target_calories)
-    return {
-        "calories": target_calories,
-        "protein": (target_calories * 0.30) / 4,
-        "carbs": (target_calories * 0.40) / 4,
-        "fat": (target_calories * 0.30) / 9
-    }
-
 # ---------------- Main App UI ----------------
 st.title("🍽️ Advanced Nutrition & Calorie Tracker")
-
 # Persistent error message display
 if 'error_message' in st.session_state and st.session_state.error_message:
     st.error(st.session_state.error_message)
     if st.button("Clear Error Message"):
         st.session_state.error_message = None
-        st.rerun()
-
+        st.experimental_rerun()
 if 'new_entries' not in st.session_state:
     st.session_state.new_entries = []
-
 with st.sidebar:
     st.header("👤 Your Profile")
     user_name = st.text_input("Enter your name to load/save a profile", "Guest")
-
+    # Ensure user_name is a string, not list
+    if isinstance(user_name, list):
+        st.error("Please enter a valid single name, not a list.")
+        st.stop()
     if user_name:
         profile = load_user_profile(user_name)
         weight = st.number_input("Weight (kg)", 40.0, 200.0, profile.get("weight", 70.0), 0.5)
