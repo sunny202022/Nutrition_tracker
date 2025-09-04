@@ -48,15 +48,15 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         profile_json = json.dumps(profile_data)
         session = conn.session()
         source_df = session.create_dataframe([(user_name, profile_json)], schema=['KEY', 'VALUE'])
-        target_table = session.table("USER_PROFILE")
         target_table.merge(
-            source=source_df,
-            join_expr=(target_table['KEY'] == source_df['KEY']),
-            clauses=[
-                when_matched().update({'VALUE': source_df['VALUE']}),
-                when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
+        source=source_df,
+        join_expr=(target_table['KEY'] == source_df['KEY']),
+        clauses=[
+            when_matched().update({'VALUE': source_df['VALUE']}),
+            when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
             ]
-        )
+        ).collect()   # ✅ force execution
+
         st.cache_data.clear()
     except Exception as e:
         st.error(f"Error saving profile: {e}")
@@ -93,6 +93,7 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
             "NUTRITION_LOG",
             column_order=target_columns
         )
+
         st.cache_data.clear()
         st.session_state.error_message = None # Clear error on success
     except Exception as e:
