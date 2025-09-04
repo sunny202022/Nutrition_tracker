@@ -349,7 +349,7 @@ with col2:
             st.progress(min(1.0, progress_ratio), text=f"{totals['CALORIES']:.0f} / {targets['calories']:.0f} kcal")
             st.markdown("---"); st.subheader("💪 Macronutrients (grams)")
             progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']],'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
-            st.bar_chart(progress_df, height=300)
+            st.bar_chart(progress_df.set_index('Nutrient'), height=300)
         else: st.info("Log your first meal to see your progress dashboard!")
     
     with st.container(border=True):
