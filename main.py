@@ -344,7 +344,7 @@ with col2:
         st.header("📊 Daily Progress Dashboard")
         
         if not df_today.empty and 'targets' in locals():
-            totals = log_df[['PROTEIN', 'CARBS', 'FAT', 'CALORIES']].sum()
+            totals = df_today[['PROTEIN', 'CARBS', 'FAT', 'CALORIES']].sum()
         
             targets = {
                 "protein": profile.get("protein_target", 120),
