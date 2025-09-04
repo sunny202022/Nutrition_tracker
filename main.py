@@ -41,16 +41,19 @@ except Exception as e:
     st.stop()
 
 # ---------------- Snowflake Data Functions ----------------
+# ... [REST OF THE CODE BEFORE MAIN APP UI] ...
+
+# ---------------- Snowflake Data Functions ----------------
 def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name or isinstance(user_name, list):
         st.error("Invalid user_name parameter (should be a string).")
         return {}
     try:
-        # Use the global session object
-        df = session.table("USER_PROFILE").filter(col("KEY") == user_name).to_pandas()
+        # Use quoted identifier for case-sensitive column name
+        df = session.table("USER_PROFILE").filter(col('"key"') == user_name).to_pandas()
         if not df.empty:
             try:
-                return json.loads(df.iloc[0]["PROFILE_JSON"])
+                return json.loads(df.iloc[0]['value'])  # Use lowercase column name
             except Exception as e:
                 st.warning(f"Could not parse profile JSON: {e}")
                 return {}
@@ -65,18 +68,20 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         return
     try:
         profile_json = json.dumps(profile_data)
-        # Use the global session object
         target_table = session.table("USER_PROFILE")
+        
+        # Use quoted identifiers for case-sensitive column names
         source_df = session.create_dataframe(
             [(user_name, profile_json)],
-            schema=['KEY', 'PROFILE_JSON']
+            schema=['"key"', '"value"']  # Quoted identifiers
         )
+        
         target_table.merge(
             source=source_df,
-            join_expr=(target_table['KEY'] == source_df['KEY']),
+            join_expr=(target_table['"key"'] == source_df['"key"']),
             clauses=[
-                when_matched().update({'PROFILE_JSON': source_df['PROFILE_JSON']}),
-                when_not_matched().insert({'KEY': source_df['KEY'], 'PROFILE_JSON': source_df['PROFILE_JSON']})
+                when_matched().update({'"value"': source_df['"value"']}),
+                when_not_matched().insert({'"key"': source_df['"key"'], '"value"': source_df['"value"']})
             ]
         ).collect()
     except Exception as e:
@@ -87,8 +92,8 @@ def load_nutrition_log(user_name: str) -> pd.DataFrame:
         st.error("Invalid user_name parameter (should be a string).")
         return pd.DataFrame()
     try:
-        # Use the global session object
-        df = session.table("NUTRITION_LOG").filter(col("USER_NAME") == user_name).to_pandas()
+        # Use quoted identifier for case-sensitive column name
+        df = session.table("NUTRITION_LOG").filter(col('"USER_NAME"') == user_name).to_pandas()
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
