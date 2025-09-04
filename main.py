@@ -34,10 +34,10 @@ def load_user_profile(user_name: str) -> Dict[str, Any]:
     try:
         # FIXED: Use parameters to prevent SQL injection
         df = conn.query(
-            'SELECT VALUE FROM USER_PROFILE WHERE KEY = :user_key',
-            params={"user_key": user_name.lower()},
-            ttl=0
-        )
+    'SELECT * FROM NUTRITION_LOG WHERE USER_NAME = ? ORDER BY "ID" DESC', # <-- Use ?
+    params=[user_name.lower()], # <-- List
+    ttl=0
+)
         if not df.empty:
             return json.loads(df.iloc[0]["VALUE"])
         return {} # Return an empty dict if the user is new
