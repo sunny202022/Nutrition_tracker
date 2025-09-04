@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta, date
 import traceback
 from typing import Dict, Any, List
-
+from snowflake.snowpark.types import Variant
 # Snowpark
 from snowflake.snowpark.functions import when_matched, when_not_matched
 
@@ -46,9 +46,9 @@ def load_user_profile() -> Dict[str, Any]:
 
 def save_user_profile(profile_data: Dict[str, Any]):
     try:
-        profile_json = json.dumps(profile_data)
         session = conn.session()
-        source_df = session.create_dataframe([(DEFAULT_KEY, profile_json)], schema=['KEY', 'VALUE'])
+        # Convert dict to Snowflake VARIANT type instead of JSON string
+        source_df = session.create_dataframe([(DEFAULT_KEY, profile_data)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
         target_table.merge(
             source=source_df,
