@@ -270,7 +270,7 @@ if 'error_message' in st.session_state and st.session_state.error_message:
     st.error(st.session_state.error_message)
     if st.button("Clear Error Message"):
         st.session_state.error_message = None
-        st.experimental_rerun()
+        st.rerun()
 if 'new_entries' not in st.session_state:
     st.session_state.new_entries = []
 with st.sidebar:
