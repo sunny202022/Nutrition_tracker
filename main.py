@@ -4,7 +4,8 @@ import json
 import traceback
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, date
-from snowflake.snowpark.types import StructType, StructField, StringType, FloatType, DateType
+
+# Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
 
 # ---------------- App Configuration ----------------
@@ -13,146 +14,99 @@ st.set_page_config(layout="wide", page_title="Nutrition & Calorie Tracker", page
 # ---------------- Custom CSS for Styling ----------------
 st.markdown("""
 <style>
-[data-testid="stMetricValue"] {
-    font-size: 1.8em;
-    justify-content: center;
-}
-[data-testid="stMetricLabel"] {
-    justify-content: center;
-}
-.unsaved-badge {
-    background-color: #FFC107;
-    color: black;
-    padding: 2px 6px;
-    border-radius: 8px;
-    font-size: 0.75em;
-    margin-left: 8px;
-    font-weight: bold;
-}
+    [data-testid="stMetricValue"] { font-size: 1.8em; justify-content: center; }
+    [data-testid="stMetricLabel"] { justify-content: center; }
+    .unsaved-badge {
+        background-color: #FFC107; color: black; padding: 2px 6px;
+        border-radius: 8px; font-size: 0.75em; margin-left: 8px; font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------- Snowflake Connection ----------------
 try:
     conn = st.connection("snowflake")
-    session = conn.session()  # Create session object here
 except Exception as e:
-    st.error(f"Failed to connect to Snowflake: {str(e)}")
+    st.error("Failed to connect to Snowflake. Please check your secrets.toml configuration.")
     st.stop()
 
-# ---------------- Snowflake Data Functions ----------------
-# ... [REST OF THE CODE BEFORE MAIN APP UI] ...
+# ---------------- Snowflake Data Functions (Corrected and Final) ----------------
 
-# ---------------- Snowflake Data Functions ----------------
 def load_user_profile(user_name: str) -> Dict[str, Any]:
-    if not user_name or isinstance(user_name, list):
-        st.error("Invalid user_name parameter (should be a string).")
-        return {}
+    if not user_name: return {}
     try:
-        # Use quoted identifier for case-sensitive column name
-        df = session.table("USER_PROFILE").filter(col('"key"') == user_name).to_pandas()
-        if not df.empty:
-            try:
-                return json.loads(df.iloc[0]['value'])  # Use lowercase column name
-            except Exception as e:
-                st.warning(f"Could not parse profile JSON: {e}")
-                return {}
+        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name.lower()], ttl=0)
+        if not df.empty: return json.loads(df.iloc[0]["VALUE"])
         return {}
     except Exception as e:
         st.error(f"Error loading profile for {user_name}: {e}")
         return {}
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
-    if not user_name or isinstance(user_name, list):
-        st.error("Invalid user_name parameter (should be a string).")
-        return
+    if not user_name: return
     try:
         profile_json = json.dumps(profile_data)
+        session = conn.session()
+        source_df = session.create_dataframe([(user_name.lower(), profile_json)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
-        
-        # Use quoted identifiers for case-sensitive column names
-        source_df = session.create_dataframe(
-            [(user_name, profile_json)],
-            schema=['"key"', '"value"']  # Quoted identifiers
-        )
-        
         target_table.merge(
             source=source_df,
-            join_expr=(target_table['"key"'] == source_df['"key"']),
+            join_expr=(target_table['KEY'] == source_df['KEY']),
             clauses=[
-                when_matched().update({'"value"': source_df['"value"']}),
-                when_not_matched().insert({'"key"': source_df['"key"'], '"value"': source_df['"value"']})
+                when_matched().update({'VALUE': source_df['VALUE']}),
+                when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
             ]
-        ).collect()
+        )
+        st.cache_data.clear()
     except Exception as e:
-        st.error(f"Error saving profile for {user_name}: {e}")
+        st.error(f"Error saving profile: {e}")
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
-    if not user_name or isinstance(user_name, list):
-        st.error("Invalid user_name parameter (should be a string).")
-        return pd.DataFrame()
+    if not user_name: return pd.DataFrame()
     try:
-        df = session.table("NUTRITION_LOG").filter(col('"USER_NAME"') == user_name).to_pandas()
+        # FIXED: Use quoted identifier for "USER_NAME"
+        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
 
-
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
-    if not user_name or isinstance(user_name, list) or not entries:
-        st.error("Invalid parameters for saving log batch.")
-        return
+    if not user_name or not entries: return
     try:
+        session = conn.session()
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": str(user_name),
-                "Date": entry["DATE"],
-                "Meal": str(entry["MEAL"]),
-                "Food": str(entry["FOOD"]),
-                "Quantity": float(entry["QUANTITY"]),
-                "Calories": float(entry["CALORIES"]),
-                "Protein": float(entry["PROTEIN"]),
-                "Carbs": float(entry["CARBS"]),
-                "Fat": float(entry["FAT"])
+                "USER_NAME": user_name.lower(), "DATE": entry["DATE"], "MEAL": entry["MEAL"],
+                "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
+                "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
-
-        schema = StructType([
-            StructField("USER_NAME", StringType()),
-            StructField("Date", DateType()),
-            StructField("Meal", StringType()),
-            StructField("Food", StringType()),
-            StructField("Quantity", FloatType()),
-            StructField("Calories", FloatType()),
-            StructField("Protein", FloatType()),
-            StructField("Carbs", FloatType()),
-            StructField("Fat", FloatType())
-        ])
-
-        df_to_save = session.create_dataframe(rows_to_insert, schema=schema)
-        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG")
-        st.session_state.new_entries = []
-
+        
+        # FIXED: Define the target columns to match our DataFrame, letting Snowflake handle "ID"
+        target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
+        
+        df_to_save = session.create_dataframe(rows_to_insert)
+        
+        # FIXED: Use column_order to correctly map DataFrame columns to table columns
+        df_to_save.write.mode("append").save_as_table(
+            "NUTRITION_LOG",
+            column_order=target_columns
+        )
+        st.cache_data.clear()
+        st.session_state.error_message = None
     except Exception as e:
-        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
-        print(traceback.format_exc())
         st.session_state.error_message = f"Failed to save data: {e}"
 
-
 def delete_entry_from_db(entry_id: int):
-    if isinstance(entry_id, list):
-        st.error("Invalid entry_id parameter (should be an int).")
-        return
     try:
-        # Use the global session object
-        session.sql(f'DELETE FROM NUTRITION_LOG WHERE "ID" = {entry_id}').collect()
+        conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
+        st.cache_data.clear()
     except Exception as e:
         st.error(f"Error deleting entry: {e}")
 
-# ... [REST OF THE CODE REMAINS THE SAME - FOOD DATABASE, CALCULATIONS, UI] ...
-
-
+# (The rest of your Python code for FOOD_DB, calculations, and UI goes here without any changes)
+# --- [Paste the rest of the app code here] ---
 # ---------------- Food Database ----------------
 indian_food_data = { 
     "Food Item": ["Roti (Chapati)", "Phulka", "Tandoori Roti"],
@@ -238,23 +192,25 @@ with st.sidebar:
         # Calculate targets
         tdee = calculate_tdee(weight, height, age, gender, activity_level)
         targets = calculate_targets(tdee, goal, weekly_change)
-
-        if st.button("💾 Save Profile & Goals", use_container_width=True, type="primary"):
+        
+        # UNIFIED SAVE BUTTON
+        st.markdown("---")
+        if st.button("💾 Save All Changes", use_container_width=True, type="primary"):
+            # 1. Save Profile Data
             profile_data = {
-                "weight": weight,
-                "height": height,
-                "age": age,
-                "gender": gender,
-                "activity_level": activity_level,
-                "goal": goal,
-                "weekly_change": weekly_change,
-                "calorie_target": targets["calories"],
-                "protein_target": targets["protein"],
-                "carbs_target": targets["carbs"],
-                "fat_target": targets["fat"]
+                "weight": weight, "height": height, "age": age, "gender": gender,
+                "activity_level": activity_level, "goal": goal, "weekly_change": weekly_change
             }
             save_user_profile(user_name, profile_data)
-            st.success(f"Profile saved for {user_name}!")
+            
+            # 2. Save Log Entries if there are any
+            if st.session_state.new_entries:
+                save_log_batch(user_name, st.session_state.new_entries)
+
+            # 3. Handle success/error and rerun
+            if not st.session_state.get("error_message"):
+                st.session_state.new_entries = []
+                st.success("All changes saved successfully!")
             st.rerun()
 
         st.markdown("---"); st.header("📈 Daily Targets")
@@ -266,17 +222,20 @@ with st.sidebar:
         st.warning("Please enter a name to use the app.")
         st.stop()
 
-# ---------------- Load Logs ----------------
+# ---------------- Load Logs and Display Data ----------------
 log_df_db = load_nutrition_log(user_name)
 today_date = date.today()
 
 df_new = pd.DataFrame(st.session_state.new_entries) if st.session_state.new_entries else pd.DataFrame()
 df_display = pd.concat([log_df_db, df_new], ignore_index=True) if not df_new.empty else log_df_db.copy()
+
 if not df_display.empty:
     df_display['DATE'] = pd.to_datetime(df_display['DATE']).dt.date
-df_today = df_display[df_display['DATE'] == today_date] if not df_display.empty else pd.DataFrame()
+    df_today = df_display[df_display['DATE'] == today_date]
+else:
+    df_today = pd.DataFrame()
 
-# ---------------- Today's Totals ----------------
+# Today's Totals
 if not df_today.empty:
     totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
     st.subheader(f"Today's Totals for {user_name}")
@@ -287,17 +246,13 @@ if not df_today.empty:
     c[3].metric("🥑 Fat", f"{totals['FAT']:.1f} g")
     st.markdown("---")
 
-# ---------------- Layout ----------------
+# Layout
 col1, col2 = st.columns([1.5, 2], gap="large")
-
 with col1:
     with st.container(border=True):
         st.header("🍛 Add Food Intake")
         with st.form("add_food_form", clear_on_submit=True):
-            selected_food = st.selectbox(
-                "Select Food",
-                [""] + [f"{name} ({info['serving_size_g']}g)" for name, info in sorted(FOOD_DB.items())]
-            )
+            selected_food = st.selectbox("Select Food", [""] + [f"{name} ({info['serving_size_g']}g)" for name, info in sorted(FOOD_DB.items())])
             search_food = selected_food.rsplit(' (', 1)[0] if selected_food else None
             c1, c2 = st.columns(2)
             quantity = c1.number_input("Servings", 1, 20, 1, 1)
@@ -306,20 +261,15 @@ with col1:
                 if search_food and search_food in FOOD_DB:
                     info = FOOD_DB[search_food]
                     entry = {
-                        "DATE": today_date,
-                        "MEAL": meal_type,
-                        "FOOD": search_food,
-                        "QUANTITY": float(quantity),
-                        "CALORIES": info["cal"] * quantity,
-                        "PROTEIN": info["protein"] * quantity,
-                        "CARBS": info["carbs"] * quantity,
+                        "DATE": today_date, "MEAL": meal_type, "FOOD": search_food,
+                        "QUANTITY": float(quantity), "CALORIES": info["cal"] * quantity,
+                        "PROTEIN": info["protein"] * quantity, "CARBS": info["carbs"] * quantity,
                         "FAT": info["fat"] * quantity
                     }
                     st.session_state.new_entries.append(entry)
                     st.rerun()
                 else: st.warning("Please select a valid food item.")
 
-    # Today's Log
     if not df_today.empty:
         with st.container(border=True):
             st.header(f"📅 Today's Log")
@@ -334,44 +284,24 @@ with col1:
                                 c1.markdown(f"{row['QUANTITY']}x {row['FOOD']} <span class='unsaved-badge'>Unsaved</span>", unsafe_allow_html=True)
                             else:
                                 c1.text(f"{row['QUANTITY']}x {row['FOOD']}")
+                            c2.text(f"{row['CALORIES']:.0f} kcal")
+                            if is_saved:
                                 if c3.button("🗑️", key=f"del_{row['ID']}", help="Remove item"):
                                     delete_entry_from_db(int(row['ID']))
                                     st.rerun()
-            
-            if st.session_state.new_entries:
-                st.markdown("---")
-                if st.button("💾 Save Today's Log to Snowflake", use_container_width=True, type="primary"):
-                    with st.spinner("Saving entries..."):
-                        save_log_batch(user_name, st.session_state.new_entries)
-                    if not st.session_state.get("error_message"):
-                        st.session_state.new_entries = []
-                        st.success("Successfully saved today's log!")
-                    st.rerun()
 with col2:
     with st.container(border=True):
         st.header("📊 Daily Progress Dashboard")
         if not df_today.empty and 'targets' in locals():
-            totals = df_today[['PROTEIN', 'CARBS', 'FAT', 'CALORIES']].sum()
-            targets = {
-                "protein": profile.get("protein_target", 120),
-                "carbs": profile.get("carbs_target", 160),
-                "fat": profile.get("fat_target", 53),
-                "calories": profile.get("calorie_target", 2000)
-            }
-
-            # ✅ Build DataFrame cleanly
-            progress_df = pd.DataFrame({
-                'Nutrient': ['Protein', 'Carbs', 'Fat'],
-                'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']],
-                'Target': [targets['protein'], targets['carbs'], targets['fat']]
-            })
-
-            # ✅ Use Nutrient as index for charting
-            st.bar_chart(progress_df.set_index('Nutrient'), height=300)
-            st.write(f"**Total Calories:** {totals['CALORIES']} / {targets['calories']} kcal")
-        else:
-            st.info("Add food entries to see today's progress.")
-
+            totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
+            st.subheader("🔥 Calories")
+            progress_ratio = totals['CALORIES'] / targets['calories'] if targets['calories'] > 0 else 0
+            st.progress(min(1.0, progress_ratio), text=f"{totals['CALORIES']:.0f} / {targets['calories']:.0f} kcal")
+            st.markdown("---"); st.subheader("💪 Macronutrients (grams)")
+            progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']], 'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
+            st.bar_chart(progress_df, height=300)
+        else: st.info("Log your first meal to see your progress dashboard!")
+    
     with st.container(border=True):
         st.header("📆 Weekly Calorie Trend")
         if not df_display.empty:
@@ -382,7 +312,5 @@ with col2:
                 all_days = pd.date_range(start=week_start_date, end=date.today(), freq='D').date
                 daily_summary = daily_summary.reindex(all_days, fill_value=0)
                 st.area_chart(daily_summary, height=250)
-            else:
-                st.info("Log meals for a couple of days to see your weekly trends.")
-        else:
-            st.info("Log meals to see your weekly trends.")
+            else: st.info("Log meals for a couple of days to see your weekly trends.")
+        else: st.info("Log meals to see your weekly trends.")
