@@ -30,7 +30,7 @@ except Exception as e:
     st.stop()
 
 # ---------------- Snowflake Functions ----------------
-def load_user_profile(user_name: str) -> Dict[str, Any]:
+def load_user_profile(user_name: str) -> dict:
     if not user_name or isinstance(user_name, list):
         st.error("Invalid user_name parameter (should be a string).")
         return {}
@@ -46,6 +46,7 @@ def load_user_profile(user_name: str) -> Dict[str, Any]:
     except Exception as e:
         st.error(f"Error loading profile for {user_name}: {e}")
         return {}
+
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     if not user_name or isinstance(user_name, list):
