@@ -1,54 +1,53 @@
 import streamlit as st
 import pandas as pd
 import json
-from datetime import date, timedelta
-from typing import Dict, Any, List
-
-# Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
-
-# ---------------- App Configuration ----------------
-st.set_page_config(layout="wide", page_title="Nutrition & Calorie Tracker", page_icon="🍽️")
-
-# ---------------- Custom CSS ----------------
-st.markdown("""
-<style>
-[data-testid="stMetricValue"] { font-size: 1.8em; justify-content: center; }
-[data-testid="stMetricLabel"] { justify-content: center; }
-.unsaved-badge {
-    background-color: #FFC107; color: black; padding: 2px 6px;
-    border-radius: 8px; font-size: 0.75em; margin-left: 8px; font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ---------------- Snowflake Connection ----------------
 try:
     conn = st.connection("snowflake")
 except Exception as e:
-    st.error("Failed to connect to Snowflake. Please check your configuration.")
+    st.error("Failed to connect to Snowflake. Check your secrets.toml configuration.")
     st.stop()
 
-# ---------------- Snowflake Functions ----------------
-def load_user_profile() -> Dict[str, Any]:
-    """Load the single profile (no username)"""
+# ---------------- User Profile Functions ----------------
+
+def load_user_profile() -> dict:
+    """
+    Load user profile from Snowflake. Returns a dict.
+    """
     try:
-        df = conn.query('SELECT VALUE FROM USER_PROFILE LIMIT 1', ttl=0)
-        if not df.empty:
-            return df.iloc[0]["VALUE"]  # Already VARIANT dict
+        df = conn.query('SELECT "VALUE" FROM USER_PROFILE LIMIT 1', ttl=0)
+        if df.empty:
+            return {}
+        profile_raw = df.iloc[0]["VALUE"]
+        if isinstance(profile_raw, str):
+            try:
+                return json.loads(profile_raw)
+            except Exception:
+                return {}
+        elif isinstance(profile_raw, dict):
+            return profile_raw
         return {}
     except Exception as e:
         st.error(f"Error loading profile: {e}")
         return {}
 
-def save_user_profile(profile_data: Dict[str, Any]):
+def save_user_profile(profile_data: dict):
+    """
+    Save user profile to Snowflake. Handles VARIANT type correctly.
+    """
     try:
         session = conn.session()
-        source_df = session.create_dataframe([(profile_data,)], schema=["VALUE"])
+        # Convert dict to JSON string
+        profile_json = json.dumps(profile_data)
+        # Create single-row DataFrame
+        source_df = session.create_dataframe([(profile_json,)], schema=['VALUE'])
         target_table = session.table("USER_PROFILE")
+        # Merge without .collect()
         target_table.merge(
             source=source_df,
-            join_expr=None,  # Single-row table, no join needed
+            join_expr=None,  # single-row table
             clauses=[
                 when_matched().update({"VALUE": source_df["VALUE"]}),
                 when_not_matched().insert({"VALUE": source_df["VALUE"]})
@@ -56,6 +55,8 @@ def save_user_profile(profile_data: Dict[str, Any]):
         )
     except Exception as e:
         st.session_state.error_message = f"Error saving profile: {e}"
+
+# ---------------- Nutrition Log Functions ----------------
 
 def load_nutrition_log() -> pd.DataFrame:
     try:
@@ -65,7 +66,7 @@ def load_nutrition_log() -> pd.DataFrame:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
 
-def save_log_batch(entries: List[Dict[str, Any]]):
+def save_log_batch(entries: list):
     if not entries:
         return
     try:
@@ -76,12 +77,6 @@ def save_log_batch(entries: List[Dict[str, Any]]):
     except Exception as e:
         st.session_state.error_message = f"Failed to save log data: {e}"
 
-def delete_entry_from_db(entry_id: int):
-    try:
-        conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Error deleting entry: {e}")
 
 # ---------------- Food Database ----------------
 indian_food_data = { 
