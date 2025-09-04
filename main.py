@@ -71,7 +71,7 @@ def save_log_batch(entries: list):
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": "guest",
+                "USER_NAME": "guest",  # single-user mode
                 "DATE": entry["DATE"],
                 "MEAL": entry["MEAL"],
                 "FOOD": entry["FOOD"],
@@ -81,14 +81,16 @@ def save_log_batch(entries: list):
                 "CARBS": float(entry["CARBS"]),
                 "FAT": float(entry["FAT"])
             })
+
+        columns = ["USER_NAME","DATE","MEAL","FOOD","QUANTITY","CALORIES","PROTEIN","CARBS","FAT"]
+        df_to_save = session.create_dataframe(rows_to_insert, schema=columns)
+        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG", column_order=columns)
         
-        target_columns = ["USER_NAME","DATE","MEAL","FOOD","QUANTITY","CALORIES","PROTEIN","CARBS","FAT"]
-        # Pass list of dicts and schema explicitly
-        df_to_save = session.create_dataframe(rows_to_insert, schema=target_columns)
-        
-        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG", column_order=target_columns)
+        # Clear unsaved entries
+        st.session_state.new_entries = []
     except Exception as e:
         st.session_state.error_message = f"Failed to save log data: {e}"
+
 
 def delete_entry_from_db(entry_id: int):
     try:
