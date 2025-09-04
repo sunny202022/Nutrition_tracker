@@ -71,7 +71,6 @@ def load_nutrition_log(user_name: str) -> pd.DataFrame:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
 
-# <-- NEW: A more efficient batch save function
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
     """Saves a list of new entries to Snowflake in a single transaction."""
     if not user_name or not entries:
@@ -86,12 +85,28 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
                 "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
+            
+        # Define the exact columns you are inserting into
+        target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
         
+        # Create a DataFrame and perform one write operation
         df_to_save = session.create_dataframe(rows_to_insert)
-        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG")
+        
+        # <-- FIXED: Use column_order to specify which columns we are providing data for
+        df_to_save.write.mode("append").save_as_table(
+            "NUTRITION_LOG",
+            column_order=target_columns
+        )
         
         st.cache_data.clear()
         
+    except Exception as e:
+        # Keep the error handling to catch any other potential issues
+        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
+        import traceback
+        print(traceback.format_exc())
+        print("--- END OF ERROR ---")
+        st.session_state.error_message = f"Failed to save data: {e}"
     # <-- START OF MODIFIED SECTION
     except Exception as e:
         # 1. Print the detailed error to your terminal/console
