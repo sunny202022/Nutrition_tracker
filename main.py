@@ -4,7 +4,7 @@ import json
 import traceback
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, date
-
+from snowflake.snowpark.types import StructType, StructField, StringType, FloatType, DateType
 # Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
 
@@ -90,16 +90,17 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": user_name,
-                "DATE": entry["DATE"],
-                "MEAL": entry["MEAL"],
-                "FOOD": entry["FOOD"],
-                "QUANTITY": entry["QUANTITY"],
-                "CALORIES": entry["CALORIES"],
-                "PROTEIN": entry["PROTEIN"],
-                "CARBS": entry["CARBS"],
-                "FAT": entry["FAT"]
-            })
+            "USER_NAME": str(user_name),  # Ensure string
+            "DATE": entry["DATE"] if isinstance(entry["DATE"], (str, datetime, date)) else str(entry["DATE"]),
+            "MEAL": str(entry["MEAL"]),
+            "FOOD": str(entry["FOOD"]),
+            "QUANTITY": float(entry["QUANTITY"]),
+            "CALORIES": float(entry["CALORIES"]),
+            "PROTEIN": float(entry["PROTEIN"]),
+            "CARBS": float(entry["CARBS"]),
+            "FAT": float(entry["FAT"])
+        })   
+
         target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
         df_to_save = session.create_dataframe(rows_to_insert)
         df_to_save.write.mode("append").save_as_table(
@@ -428,18 +429,19 @@ with col2:
         else:
             st.info("Add food entries to see today's progress.")
 
-    with st.container(border=True):
-        st.header("📆 Weekly Calorie Trend")
-        if not df_display.empty:
-            week_start_date = date.today() - timedelta(days=6)
-            week_df = df_display[pd.to_datetime(df_display['DATE']).dt.date >= week_start_date]
-            if len(week_df) >= 1:
-                daily_summary = week_df.groupby(pd.to_datetime(week_df['DATE']).dt.date)['CALORIES'].sum()
-                all_days = pd.date_range(start=week_start_date, end=date.today(), freq='D').date
-                daily_summary = daily_summary.reindex(all_days, fill_value=0)
-                st.area_chart(daily_summary, height=250)
+        with st.container(border=True):
+            st.header("📆 Weekly Calorie Trend")
+            if not df_display.empty:
+                week_start_date = date.today() - timedelta(days=6)
+                week_df = df_display[pd.to_datetime(df_display['DATE']).dt.date >= week_start_date]
+                if len(week_df) >= 1:
+                    daily_summary = week_df.groupby(pd.to_datetime(week_df['DATE']).dt.date)['CALORIES'].sum()
+                    all_days = pd.date_range(start=week_start_date, end=date.today(), freq='D').date
+                    daily_summary = daily_summary.reindex(all_days, fill_value=0)
+                    st.area_chart(daily_summary, height=250)
+                else:
+                    st.info("Log meals for a couple of days to see your weekly trends.")
             else:
-                st.info("Log meals for a couple of days to see your weekly trends.")
-        else:
-            st.info("Log meals to see your weekly trends.")
-
+                st.info("Log meals to see your weekly trends.")
+    
+    
