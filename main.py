@@ -343,7 +343,7 @@ with col2:
     with st.container(border=True):
         st.header("📊 Daily Progress Dashboard")
         
-        if not log_df.empty:
+        if not df_today.empty and 'targets' in locals():
             totals = log_df[['PROTEIN', 'CARBS', 'FAT', 'CALORIES']].sum()
         
             targets = {
