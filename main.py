@@ -47,7 +47,7 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     try:
         profile_json = json.dumps(profile_data)
         session = conn.session()
-        source_df = session.create_dataframe([(user_name.lower(), profile_json)], schema=['KEY', 'VALUE'])
+        source_df = session.create_dataframe([(user_name, profile_json)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
         target_table.merge(
             source=source_df,
@@ -64,7 +64,7 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name: return pd.DataFrame()
     try:
-        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
+        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name], ttl=0)
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
@@ -80,7 +80,7 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": user_name.lower(), "DATE": entry["DATE"], "MEAL": entry["MEAL"],
+                "USER_NAME": user_name, "DATE": entry["DATE"], "MEAL": entry["MEAL"],
                 "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
