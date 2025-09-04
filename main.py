@@ -56,15 +56,14 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
                 when_matched().update({'VALUE': source_df['VALUE']}),
                 when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
             ]
-        )
-        st.cache_data.clear()
+        ).collect() # Use .collect() to execute the merge
     except Exception as e:
-        st.error(f"Error saving profile: {e}")
+        st.session_state.error_message = f"Error saving profile: {e}"
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name: return pd.DataFrame()
     try:
-        # FIXED: Use quoted identifier for "USER_NAME"
+        # FIXED: Use quoted identifier for "USER_NAME" to match the new table schema
         df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
         return df
     except Exception as e:
@@ -83,20 +82,17 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
         
-        # FIXED: Define the target columns to match our DataFrame, letting Snowflake handle "ID"
         target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
         
         df_to_save = session.create_dataframe(rows_to_insert)
         
-        # FIXED: Use column_order to correctly map DataFrame columns to table columns
+        # FIXED: Use column_order to correctly map DataFrame columns, letting Snowflake handle "ID"
         df_to_save.write.mode("append").save_as_table(
             "NUTRITION_LOG",
             column_order=target_columns
         )
-        st.cache_data.clear()
-        st.session_state.error_message = None
     except Exception as e:
-        st.session_state.error_message = f"Failed to save data: {e}"
+        st.session_state.error_message = f"Failed to save log data: {e}"
 
 def delete_entry_from_db(entry_id: int):
     try:
@@ -189,28 +185,27 @@ with st.sidebar:
         goal = st.radio("Goal", ["Maintain", "Weight Loss", "Muscle Gain"], index=["Maintain", "Weight Loss", "Muscle Gain"].index(profile.get("goal", "Weight Loss")), horizontal=True)
         weekly_change = st.slider("Weekly Weight Change (kg)", 0.0, 1.5, profile.get("weekly_change", 0.5), 0.1) if goal != "Maintain" else 0.0
 
-        # Calculate targets
         tdee = calculate_tdee(weight, height, age, gender, activity_level)
         targets = calculate_targets(tdee, goal, weekly_change)
         
         # UNIFIED SAVE BUTTON
         st.markdown("---")
         if st.button("💾 Save All Changes", use_container_width=True, type="primary"):
-            # 1. Save Profile Data
+            st.session_state.error_message = None # Reset error before trying
+            
             profile_data = {
                 "weight": weight, "height": height, "age": age, "gender": gender,
                 "activity_level": activity_level, "goal": goal, "weekly_change": weekly_change
             }
             save_user_profile(user_name, profile_data)
             
-            # 2. Save Log Entries if there are any
             if st.session_state.new_entries:
                 save_log_batch(user_name, st.session_state.new_entries)
 
-            # 3. Handle success/error and rerun
             if not st.session_state.get("error_message"):
                 st.session_state.new_entries = []
                 st.success("All changes saved successfully!")
+                st.cache_data.clear()
             st.rerun()
 
         st.markdown("---"); st.header("📈 Daily Targets")
@@ -235,7 +230,6 @@ if not df_display.empty:
 else:
     df_today = pd.DataFrame()
 
-# Today's Totals
 if not df_today.empty:
     totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
     st.subheader(f"Today's Totals for {user_name}")
@@ -246,7 +240,6 @@ if not df_today.empty:
     c[3].metric("🥑 Fat", f"{totals['FAT']:.1f} g")
     st.markdown("---")
 
-# Layout
 col1, col2 = st.columns([1.5, 2], gap="large")
 with col1:
     with st.container(border=True):
