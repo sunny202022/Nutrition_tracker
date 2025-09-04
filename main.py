@@ -342,15 +342,29 @@ with col1:
 with col2:
     with st.container(border=True):
         st.header("📊 Daily Progress Dashboard")
-        if not df_today.empty and 'targets' in locals():
-            totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
-            st.subheader("🔥 Calories")
-            progress_ratio = totals['CALORIES'] / targets['calories'] if targets['calories'] > 0 else 0
-            st.progress(min(1.0, progress_ratio), text=f"{totals['CALORIES']:.0f} / {targets['calories']:.0f} kcal")
-            st.markdown("---"); st.subheader("💪 Macronutrients (grams)")
-            progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']],'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
+        
+        if not log_df.empty:
+            totals = log_df[['PROTEIN', 'CARBS', 'FAT', 'CALORIES']].sum()
+        
+            targets = {
+                "protein": profile.get("protein_target", 120),
+                "carbs": profile.get("carbs_target", 160),
+                "fat": profile.get("fat_target", 53),
+                "calories": profile.get("calorie_target", 2000)
+            }
+        
+            # ✅ Build DataFrame cleanly
+            progress_df = pd.DataFrame({
+                'Nutrient': ['Protein', 'Carbs', 'Fat'],
+                'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']],
+                'Target': [targets['protein'], targets['carbs'], targets['fat']]
+            })
+        
+            # ✅ Use Nutrient as index for charting
             st.bar_chart(progress_df.set_index('Nutrient'), height=300)
-        else: st.info("Log your first meal to see your progress dashboard!")
+        
+            st.write(f"**Total Calories:** {totals['CALORIES']} / {targets['calories']}")
+
     
     with st.container(border=True):
         st.header("📆 Weekly Calorie Trend")
