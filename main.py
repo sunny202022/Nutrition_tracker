@@ -28,34 +28,21 @@ except Exception as e:
 # ---------------- Snowflake Data Functions (Corrected & Secure) ----------------
 
 def load_user_profile(user_name: str) -> Dict[str, Any]:
-    """Load a specific user's profile using a parameterized query with a list."""
-    if not user_name:
-        return {}
+    if not user_name: return {}
     try:
-        # FIXED: Use '?' placeholder and a list for params
-        df = conn.query(
-            'SELECT VALUE FROM USER_PROFILE WHERE KEY = ?',
-            params=[user_name.lower()],
-            ttl=0
-        )
-        if not df.empty:
-            return json.loads(df.iloc[0]["VALUE"])
+        df = conn.query('SELECT VALUE FROM USER_PROFILE WHERE KEY = ?', params=[user_name.lower()], ttl=0)
+        if not df.empty: return json.loads(df.iloc[0]["VALUE"])
         return {}
     except Exception as e:
         st.error(f"Error loading profile for {user_name}: {e}")
         return {}
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
-    """Save or update user profile in Snowflake using a secure MERGE command."""
-    if not user_name:
-        return
+    if not user_name: return
     try:
         profile_json = json.dumps(profile_data)
         session = conn.session()
-        source_df = session.create_dataframe(
-            [(user_name.lower(), profile_json)],
-            schema=['KEY', 'VALUE']
-        )
+        source_df = session.create_dataframe([(user_name.lower(), profile_json)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
         target_table.merge(
             source=source_df,
@@ -70,29 +57,19 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         st.error(f"Error saving profile: {e}")
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
-    """Load all nutrition logs for a user using a parameterized query with a list."""
-    if not user_name:
-        return pd.DataFrame()
+    if not user_name: return pd.DataFrame()
     try:
-        # FIXED: Use '?' placeholder and a list for params
-        df = conn.query(
-            'SELECT * FROM NUTRITION_LOG WHERE USER_NAME = ? ORDER BY "ID" DESC',
-            params=[user_name.lower()],
-            ttl=0
-        )
+        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE USER_NAME = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
 
 def save_entry_to_db(user_name: str, entry: Dict[str, Any]):
-    """Insert a new food log entry using a Snowpark DataFrame."""
-    if not user_name:
-        return
+    if not user_name: return
     try:
         session = conn.session()
         entry_with_user = {"USER_NAME": user_name.lower(), **entry}
-        
         df_entry = session.create_dataframe([entry_with_user])
         df_entry.write.mode("append").save_as_table("NUTRITION_LOG")
         st.cache_data.clear()
@@ -100,14 +77,14 @@ def save_entry_to_db(user_name: str, entry: Dict[str, Any]):
         st.error(f"Error saving food entry: {e}")
 
 def delete_entry_from_db(entry_id: int):
-    """Deletes an entry by its unique ID using a parameterized query with a list."""
     try:
-        # FIXED: Use '?' placeholder and a list for params
         conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
         st.cache_data.clear()
     except Exception as e:
         st.error(f"Error deleting entry: {e}")
 
+# (The rest of your Python code for FOOD_DB, calculations, and UI goes here without any changes)
+# --- [Paste the rest of the app code here] ---
 # ---------------- Food Database (No Changes) ----------------
 indian_food_data = {
     "Food Item": [
@@ -352,7 +329,7 @@ with col1: # Food Logging & Log Display
 with col2: # Dashboards
     with st.container(border=True):
         st.header("📊 Daily Progress Dashboard")
-        if not df_today.empty and targets:
+        if not df_today.empty and 'targets' in locals():
             calorie_col, protein_col, carbs_col, fat_col = 'CALORIES', 'PROTEIN', 'CARBS', 'FAT'
             totals = df_today[[calorie_col, protein_col, carbs_col, fat_col]].sum()
             st.subheader("🔥 Calories")
