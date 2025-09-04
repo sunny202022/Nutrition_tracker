@@ -58,18 +58,19 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         profile_json = json.dumps(profile_data)
         session = conn.session()
         target_table = session.table("USER_PROFILE")
-        source_df = session.create_dataframe([(user_name, profile_json)], schema=['KEY', 'VALUE'])
+        source_df = session.create_dataframe(
+            [(user_name, profile_json)],
+            schema=['KEY', 'PROFILE_JSON']
+        )
         target_table.merge(
             source=source_df,
             join_expr=(target_table['KEY'] == source_df['KEY']),
             clauses=[
-                when_matched().update({'VALUE': source_df['VALUE']}),
-                when_not_matched().insert({'KEY': source_df['KEY'], 'VALUE': source_df['VALUE']})
+                when_matched().update({'PROFILE_JSON': source_df['PROFILE_JSON']}),
+                when_not_matched().insert({'KEY': source_df['KEY'], 'PROFILE_JSON': source_df['PROFILE_JSON']})
             ]
         ).collect()
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Error saving profile: {e}")
+
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name or isinstance(user_name, list):
