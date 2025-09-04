@@ -35,7 +35,7 @@ except Exception as e:
 def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name: return {}
     try:
-        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name.lower()], ttl=0)
+        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name], ttl=0)
         if not df.empty: return json.loads(df.iloc[0]["VALUE"])
         return {}
     except Exception as e:
