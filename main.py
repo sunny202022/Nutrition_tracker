@@ -32,15 +32,20 @@ except Exception as e:
 
 # ---------------- Snowflake Data Functions (Corrected and Final) ----------------
 
-def load_user_profile(user_name: str) -> Dict[str, Any]:
-    if not user_name: return {}
+def load_nutrition_log(user_name: str) -> pd.DataFrame:
     try:
-        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name.lower()], ttl=0)
-        if not df.empty: return json.loads(df.iloc[0]["VALUE"])
-        return {}
+        if not isinstance(user_name, str):
+            raise ValueError(f"user_name must be a string, got {type(user_name).__name__}")
+        df = conn.query(
+            'SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC',
+            params=[user_name.lower()],
+            ttl=0
+        )
+        return df
     except Exception as e:
-        st.error(f"Error loading profile for {user_name}: {e}")
-        return {}
+        st.error(f"Error loading nutrition log for '{user_name}': {e}")
+        return pd.DataFrame()
+
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     if not user_name: return
@@ -71,28 +76,33 @@ def load_nutrition_log(user_name: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
-    if not user_name or not entries: return
     try:
+        if not isinstance(user_name, str):
+            raise ValueError(f"user_name must be a string, got {type(user_name).__name__}")
+        if not entries or not isinstance(entries, list):
+            raise ValueError("entries must be a non-empty list of dictionaries")
+        
         session = conn.session()
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": user_name, "DATE": entry["DATE"], "MEAL": entry["MEAL"],
-                "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
-                "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
+                "USER_NAME": user_name.lower(),
+                "DATE": entry["DATE"],
+                "MEAL": entry["MEAL"],
+                "FOOD": entry["FOOD"],
+                "QUANTITY": entry["QUANTITY"],
+                "CALORIES": entry["CALORIES"],
+                "PROTEIN": entry["PROTEIN"],
+                "CARBS": entry["CARBS"],
+                "FAT": entry["FAT"]
             })
         
         target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
-        
         df_to_save = session.create_dataframe(rows_to_insert)
-        
-        # FIXED: Use column_order to correctly map DataFrame columns, letting Snowflake handle "ID"
-        df_to_save.write.mode("append").save_as_table(
-            "NUTRITION_LOG",
-            column_order=target_columns
-        )
+        df_to_save.write.mode("append").save_as_table("NUTRITION_LOG", column_order=target_columns)
     except Exception as e:
-        st.session_state.error_message = f"Failed to save log data: {e}"
+        st.session_state.error_message = f"Failed to save log data for '{user_name}': {e}"
+
 
 def delete_entry_from_db(entry_id: int):
     try:
