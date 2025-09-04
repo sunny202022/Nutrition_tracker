@@ -37,7 +37,8 @@ def load_user_profile(user_name: str) -> Dict[str, Any]:
         st.error("Invalid user_name parameter (should be a string).")
         return {}
     try:
-        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name], ttl=0)
+        source_df = session.create_dataframe([(user_name, profile_json)], schema=['KEY', 'VALUE'])
+
         if not df.empty:
             try:
                 return json.loads(df.iloc[0]["VALUE"])
