@@ -3,7 +3,7 @@ import pandas as pd
 import json
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, date
-
+import traceback # <-- ADD THIS LINE AT THE TOP
 # Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
 
@@ -79,7 +79,6 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
     try:
         session = conn.session()
         
-        # Prepare a list of dictionaries, ensuring all keys are correct and uppercase
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
@@ -88,13 +87,21 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
         
-        # Create one DataFrame and perform one write operation
         df_to_save = session.create_dataframe(rows_to_insert)
         df_to_save.write.mode("append").save_as_table("NUTRITION_LOG")
         
-        st.cache_data.clear() # Clear Streamlit's cache after saving
+        st.cache_data.clear()
+        
+    # <-- START OF MODIFIED SECTION
     except Exception as e:
-        st.error(f"Error performing batch save: {e}")
+        # 1. Print the detailed error to your terminal/console
+        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
+        print(traceback.format_exc())
+        print("--- END OF ERROR ---")
+        
+        # 2. Save the error message to the session state to display it in the UI
+        st.session_state.error_message = f"Failed to save data: {e}"
+    # <-- END OF MODIFIED SECTION
 
 def delete_entry_from_db(entry_id: int):
     # This function is already correct
@@ -227,6 +234,14 @@ def calculate_targets(base_calories: float, goal: str, weekly_change_kg: float) 
 # ---------------- Main App UI ----------------
 st.title("🍽️ Advanced Nutrition & Calorie Tracker")
 
+# <-- ADD THIS BLOCK
+# Persistent error message display
+if 'error_message' in st.session_state and st.session_state.error_message:
+    st.error(st.session_state.error_message)
+    # Optional: Add a button to clear the message
+    if st.button("Clear Error Message"):
+        st.session_state.error_message = None
+        st.rerun()
 if 'new_entries' not in st.session_state:
     st.session_state.new_entries = []
 
