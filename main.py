@@ -339,9 +339,9 @@ with col1:
         st.header("🍛 Add Food Intake")
         with st.form("add_food_form", clear_on_submit=True):
             selected_food = st.selectbox(
-                "Select Food",
-                [""] + [f"{name} ({info['serving_size_g']}g)" for name, info in sorted(FOOD_DB.items())]
-            )
+                    "Select Food",
+                    [""] + [f"{name} ({info['serving_size_g']}g)" for name, info in sorted(FOOD_DB.items())]
+                )
             search_food = selected_food.rsplit(' (', 1)[0] if selected_food else None
             c1, c2 = st.columns(2)
             quantity = c1.number_input("Servings", 1, 20, 1, 1)
