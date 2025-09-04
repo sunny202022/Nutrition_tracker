@@ -77,7 +77,7 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
         rows_to_insert = []
         for entry in entries:
             rows_to_insert.append({
-                "USER_NAME": user_name.lower(), "DATE": entry["DATE"], "MEAL": entry["MEAL"],
+                "USER_NAME": user_name, "DATE": entry["DATE"], "MEAL": entry["MEAL"],
                 "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
