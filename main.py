@@ -64,8 +64,9 @@ def load_nutrition_log() -> pd.DataFrame:
         return pd.DataFrame()
 
 def save_log_batch(entries: list):
+    if not entries: 
+        return
     try:
-        if not entries: return
         session = conn.session()
         rows_to_insert = []
         for entry in entries:
@@ -80,8 +81,11 @@ def save_log_batch(entries: list):
                 "CARBS": float(entry["CARBS"]),
                 "FAT": float(entry["FAT"])
             })
-        target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
-        df_to_save = session.create_dataframe(rows_to_insert)
+        
+        target_columns = ["USER_NAME","DATE","MEAL","FOOD","QUANTITY","CALORIES","PROTEIN","CARBS","FAT"]
+        # Pass list of dicts and schema explicitly
+        df_to_save = session.create_dataframe(rows_to_insert, schema=target_columns)
+        
         df_to_save.write.mode("append").save_as_table("NUTRITION_LOG", column_order=target_columns)
     except Exception as e:
         st.session_state.error_message = f"Failed to save log data: {e}"
