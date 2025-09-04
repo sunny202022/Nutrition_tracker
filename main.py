@@ -15,6 +15,15 @@ st.markdown("""
 <style>
     [data-testid="stMetricValue"] { font-size: 1.8em; justify-content: center; }
     [data-testid="stMetricLabel"] { justify-content: center; }
+    .unsaved-badge {
+        background-color: #FFC107;
+        color: black;
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-size: 0.75em;
+        margin-left: 8px;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -25,12 +34,11 @@ except Exception as e:
     st.error("Failed to connect to Snowflake. Please check your secrets.toml configuration.")
     st.stop()
 
-# ---------------- Snowflake Data Functions (Corrected & Secure) ----------------
+# ---------------- Snowflake Data Functions (No Changes Needed) ----------------
 
 def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name: return {}
     try:
-        # Note: KEY and VALUE are also quoted to be safe
         df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name.lower()], ttl=0)
         if not df.empty: return json.loads(df.iloc[0]["VALUE"])
         return {}
@@ -43,7 +51,6 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     try:
         profile_json = json.dumps(profile_data)
         session = conn.session()
-        # Snowpark handles quoting automatically here, but ensure keys are uppercase
         source_df = session.create_dataframe([(user_name.lower(), profile_json)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
         target_table.merge(
@@ -61,7 +68,6 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name: return pd.DataFrame()
     try:
-        # FIXED: Enclosed "USER_NAME" in double quotes to make it case-sensitive
         df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
         return df
     except Exception as e:
@@ -72,36 +78,25 @@ def save_entry_to_db(user_name: str, entry: Dict[str, Any]):
     if not user_name: return
     try:
         session = conn.session()
-        # FIXED: Ensure all dictionary keys are uppercase to match the table's case-sensitive columns
         entry_with_user = {
-            "USER_NAME": user_name.lower(),
-            "DATE": entry["DATE"],
-            "MEAL": entry["MEAL"],
-            "FOOD": entry["FOOD"],
-            "QUANTITY": entry["QUANTITY"],
-            "CALORIES": entry["CALORIES"],
-            "PROTEIN": entry["PROTEIN"],
-            "CARBS": entry["CARBS"],
-            "FAT": entry["FAT"]
+            "USER_NAME": user_name.lower(), "DATE": entry["DATE"], "MEAL": entry["MEAL"],
+            "FOOD": entry["FOOD"], "QUANTITY": entry["QUANTITY"], "CALORIES": entry["CALORIES"],
+            "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
         }
         df_entry = session.create_dataframe([entry_with_user])
-        # Snowpark's save_as_table will correctly map the uppercase keys to the quoted columns
         df_entry.write.mode("append").save_as_table("NUTRITION_LOG")
-        st.cache_data.clear()
     except Exception as e:
         st.error(f"Error saving food entry: {e}")
 
 def delete_entry_from_db(entry_id: int):
     try:
-        # Using quotes on "ID" for consistency and safety
         conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
         st.cache_data.clear()
     except Exception as e:
         st.error(f"Error deleting entry: {e}")
 
-# (The rest of your Python code for FOOD_DB, calculations, and UI goes here without any changes)
-# --- [Paste the rest of the app code here] ---
 # ---------------- Food Database (No Changes) ----------------
+# [Your large food database dictionary goes here - omitted for brevity]
 indian_food_data = {
     "Food Item": [
         "Roti (Chapati)", "Phulka", "Tandoori Roti", "Naan (Plain)", "Butter Naan",
@@ -204,24 +199,13 @@ indian_food_data = {
 
 def format_food_database(data: dict) -> dict:
     df = pd.DataFrame(data).set_index('Food Item')
-    df = df.rename(columns={
-        'Calories (kcal)': 'cal', 'Protein (g)': 'protein',
-        'Carbohydrates (g)': 'carbs', 'Fats (g)': 'fat',
-        'Serving Size (g)': 'serving_size_g'
-    })
+    df = df.rename(columns={'Calories (kcal)': 'cal', 'Protein (g)': 'protein', 'Carbohydrates (g)': 'carbs', 'Fats (g)': 'fat', 'Serving Size (g)': 'serving_size_g'})
     return df.to_dict(orient='index')
 
 FOOD_DB = format_food_database(indian_food_data)
 
 # ---------------- Calculation Functions (No Changes) ----------------
-ACTIVITY_MULTIPLIERS = {
-    "Sedentary (office job)": 1.2,
-    "Lightly Active (1-3 days/week exercise)": 1.375,
-    "Moderately Active (3-5 days/week exercise)": 1.55,
-    "Very Active (6-7 days/week exercise)": 1.725,
-    "Extra Active (hard labor, athlete)": 1.9,
-}
-
+ACTIVITY_MULTIPLIERS = {"Sedentary (office job)": 1.2, "Lightly Active (1-3 days/week exercise)": 1.375, "Moderately Active (3-5 days/week exercise)": 1.55, "Very Active (6-7 days/week exercise)": 1.725, "Extra Active (hard labor, athlete)": 1.9}
 def calculate_tdee(weight_kg: float, height_cm: float, age: int, gender: str, activity_level: str) -> float:
     if gender == "Male": bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * age)
     else: bmr = 447.593 + (9.247 * weight_kg) + (3.098 * height_cm) - (4.330 * age)
@@ -235,8 +219,12 @@ def calculate_targets(base_calories: float, goal: str, weekly_change_kg: float) 
     target_calories = max(1200, target_calories)
     return {"calories": target_calories, "protein": (target_calories * 0.30) / 4, "carbs": (target_calories * 0.40) / 4, "fat": (target_calories * 0.30) / 9}
 
-# ---------------- Main App UI (Corrected Logic Flow) ----------------
+# ---------------- Main App UI (New Save Workflow) ----------------
 st.title("🍽️ Advanced Nutrition & Calorie Tracker")
+
+# <-- NEW: Initialize session state to hold unsaved entries
+if 'new_entries' not in st.session_state:
+    st.session_state.new_entries = []
 
 # --- Sidebar for User Profile Management ---
 with st.sidebar:
@@ -245,6 +233,7 @@ with st.sidebar:
 
     if user_name:
         profile = load_user_profile(user_name)
+        # Profile form... (omitted for brevity, no changes here)
         weight = st.number_input("Weight (kg)", 40.0, 200.0, profile.get("weight", 70.0), 0.5)
         height = st.number_input("Height (cm)", 120, 220, profile.get("height", 170), 1)
         age = st.number_input("Age", 10, 100, profile.get("age", 25), 1)
@@ -275,27 +264,34 @@ with st.sidebar:
         st.warning("Please enter a name to use the app.")
         st.stop()
 
-# --- Load Data for the selected user ---
-log_df = load_nutrition_log(user_name)
+# --- Data Loading and Combining ---
+log_df_db = load_nutrition_log(user_name) # Entries from database
 today_str = date.today().strftime("%Y-%m-%d")
 
-if not log_df.empty:
-    date_col = 'DATE'
-    log_df[date_col] = pd.to_datetime(log_df[date_col])
-    df_today = log_df[log_df[date_col].dt.strftime('%Y-%m-%d') == today_str]
+# Convert new entries from session state to a DataFrame
+if st.session_state.new_entries:
+    df_new = pd.DataFrame(st.session_state.new_entries)
+else:
+    df_new = pd.DataFrame()
+
+# Combine database entries and new, unsaved entries for display
+df_display = pd.concat([log_df_db, df_new], ignore_index=True)
+
+if not df_display.empty:
+    df_display['DATE'] = pd.to_datetime(df_display['DATE'])
+    df_today = df_display[df_display['DATE'].dt.strftime('%Y-%m-%d') == today_str]
 else:
     df_today = pd.DataFrame()
 
 # --- Display "Today's Totals" Metrics ---
 if not df_today.empty:
-    calorie_col, protein_col, carbs_col, fat_col = 'CALORIES', 'PROTEIN', 'CARBS', 'FAT'
-    totals = df_today[[calorie_col, protein_col, carbs_col, fat_col]].sum()
+    totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
     st.subheader(f"Today's Totals for {user_name}")
     c = st.columns(4)
-    c[0].metric("🔥 Total Calories", f"{totals[calorie_col]:.0f} kcal")
-    c[1].metric("💪 Protein", f"{totals[protein_col]:.1f} g")
-    c[2].metric("🍞 Carbohydrates", f"{totals[carbs_col]:.1f} g")
-    c[3].metric("🥑 Fat", f"{totals[fat_col]:.1f} g")
+    c[0].metric("🔥 Total Calories", f"{totals['CALORIES']:.0f} kcal")
+    c[1].metric("💪 Protein", f"{totals['PROTEIN']:.1f} g")
+    c[2].metric("🍞 Carbohydrates", f"{totals['CARBS']:.1f} g")
+    c[3].metric("🥑 Fat", f"{totals['FAT']:.1f} g")
     st.markdown("---")
 
 # --- Main Page Layout ---
@@ -306,23 +302,23 @@ with col1: # Food Logging & Log Display
         st.header("🍛 Add Food Intake")
         with st.form("add_food_form", clear_on_submit=True):
             food_options_display = [""] + [f"{name} ({info['serving_size_g']}g)" for name, info in sorted(FOOD_DB.items())]
-            selected_food_display = st.selectbox("Select Food", food_options_display)
-            search_food = selected_food_display.rsplit(' (', 1)[0] if selected_food_display else None
+            selected_food = st.selectbox("Select Food", food_options_display)
+            search_food = selected_food.rsplit(' (', 1)[0] if selected_food else None
             c1, c2 = st.columns(2)
             quantity = c1.number_input("Servings", 1, 20, 1, 1)
             meal_type = c2.selectbox("Meal", ["Breakfast", "Lunch", "Dinner", "Snacks"])
-            if st.form_submit_button("➕ Add Food to Log", use_container_width=True, type="primary"):
+            
+            if st.form_submit_button("➕ Add Food to Today's Log", use_container_width=True):
                 if search_food and search_food in FOOD_DB:
                     info = FOOD_DB[search_food]
-                    # This dictionary structure is fine, as the keys are mapped in the save function
                     entry = {
                         "DATE": today_str, "MEAL": meal_type, "FOOD": search_food,
                         "QUANTITY": float(quantity), "CALORIES": info["cal"] * quantity,
                         "PROTEIN": info["protein"] * quantity, "CARBS": info["carbs"] * quantity,
                         "FAT": info["fat"] * quantity
                     }
-                    save_entry_to_db(user_name, entry)
-                    st.success(f"Added {quantity}x {search_food}!")
+                    # <-- MODIFIED: Add to session state instead of saving directly
+                    st.session_state.new_entries.append(entry)
                     st.rerun()
                 else:
                     st.warning("Please select a valid food item.")
@@ -330,44 +326,66 @@ with col1: # Food Logging & Log Display
     if not df_today.empty:
         with st.container(border=True):
             st.header(f"📅 Today's Log")
-            meal_col, calorie_col, quantity_col, food_col, id_col = 'MEAL', 'CALORIES', 'QUANTITY', 'FOOD', 'ID'
             for meal in ["Breakfast", "Lunch", "Dinner", "Snacks"]:
-                meal_df = df_today[df_today[meal_col] == meal]
+                meal_df = df_today[df_today['MEAL'] == meal]
                 if not meal_df.empty:
-                    with st.expander(f"**{meal}** - {meal_df[calorie_col].sum():.0f} kcal", expanded=True):
+                    with st.expander(f"**{meal}** - {meal_df['CALORIES'].sum():.0f} kcal", expanded=True):
                         for _, row in meal_df.iterrows():
+                            # <-- MODIFIED: Check if the entry is saved or unsaved for display
+                            is_saved = 'ID' in row and pd.notna(row['ID'])
+                            
                             c1, c2, c3 = st.columns([4, 2, 1])
-                            c1.text(f"{row[quantity_col]}x {row[food_col]}")
-                            c2.text(f"{row[calorie_col]:.0f} kcal")
-                            if id_col in row and c3.button("🗑️", key=f"del_{row[id_col]}", help="Remove item"):
-                                delete_entry_from_db(int(row[id_col]))
-                                st.rerun()
+                            
+                            # Display with an "Unsaved" badge if new
+                            if not is_saved:
+                                c1.markdown(f"{row['QUANTITY']}x {row['FOOD']} <span class='unsaved-badge'>Unsaved</span>", unsafe_allow_html=True)
+                            else:
+                                c1.text(f"{row['QUANTITY']}x {row['FOOD']}")
+                            
+                            c2.text(f"{row['CALORIES']:.0f} kcal")
+                            
+                            # Only show delete button for saved entries
+                            if is_saved:
+                                if c3.button("🗑️", key=f"del_{row['ID']}", help="Remove item"):
+                                    delete_entry_from_db(int(row['ID']))
+                                    st.rerun()
+            
+            # <-- NEW: The main save button for today's log
+            if st.session_state.new_entries:
+                st.markdown("---")
+                if st.button("💾 Save Today's Log to Snowflake", use_container_width=True, type="primary"):
+                    with st.spinner("Saving entries..."):
+                        for entry in st.session_state.new_entries:
+                            save_entry_to_db(user_name, entry)
+                    st.session_state.new_entries = [] # Clear the temporary list
+                    st.cache_data.clear() # Clear streamlit's data cache
+                    st.success("Successfully saved today's log!")
+                    st.rerun()
 
-with col2: # Dashboards
+# --- [The right column with Dashboards remains the same, using df_today] ---
+with col2:
     with st.container(border=True):
         st.header("📊 Daily Progress Dashboard")
         if not df_today.empty and 'targets' in locals():
-            calorie_col, protein_col, carbs_col, fat_col = 'CALORIES', 'PROTEIN', 'CARBS', 'FAT'
-            totals = df_today[[calorie_col, protein_col, carbs_col, fat_col]].sum()
+            totals = df_today[['CALORIES', 'PROTEIN', 'CARBS', 'FAT']].sum()
             st.subheader("🔥 Calories")
-            progress_ratio = totals[calorie_col] / targets['calories'] if targets['calories'] > 0 else 0
-            st.progress(min(1.0, progress_ratio), text=f"{totals[calorie_col]:.0f} / {targets['calories']:.0f} kcal")
+            progress_ratio = totals['CALORIES'] / targets['calories'] if targets['calories'] > 0 else 0
+            st.progress(min(1.0, progress_ratio), text=f"{totals['CALORIES']:.0f} / {targets['calories']:.0f} kcal")
             st.markdown("---")
             st.subheader("💪 Macronutrients (grams)")
-            progress_df = pd.DataFrame({'Consumed': [totals[protein_col], totals[carbs_col], totals[fat_col]], 'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
+            progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']], 'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
             st.bar_chart(progress_df, height=300)
         else:
             st.info("Log your first meal to see your progress dashboard!")
     
     with st.container(border=True):
         st.header("📆 Weekly Calorie Trend")
-        if not log_df.empty:
-            date_col, calorie_col = 'DATE', 'CALORIES'
-            log_df[date_col] = pd.to_datetime(log_df[date_col])
+        # <-- MODIFIED: Use the combined display dataframe for weekly trend
+        if not df_display.empty:
             week_start_date = date.today() - timedelta(days=6)
-            week_df = log_df[log_df[date_col].dt.date >= week_start_date]
+            week_df = df_display[df_display['DATE'].dt.date >= week_start_date]
             if len(week_df) >= 1:
-                daily_summary = week_df.groupby(week_df[date_col].dt.date)[calorie_col].sum()
+                daily_summary = week_df.groupby(week_df['DATE'].dt.date)['CALORIES'].sum()
                 all_days = pd.date_range(start=week_start_date, end=date.today(), freq='D').date
                 daily_summary = daily_summary.reindex(all_days, fill_value=0)
                 st.area_chart(daily_summary, height=250)
