@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import json
+import traceback
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, date
-import traceback # <-- ADD THIS LINE AT THE TOP
+
 # Snowpark
 from snowflake.snowpark.functions import col, when_matched, when_not_matched
 
@@ -29,7 +30,7 @@ except Exception as e:
     st.error("Failed to connect to Snowflake. Please check your secrets.toml configuration.")
     st.stop()
 
-# ---------------- Snowflake Data Functions (With Batch Save) ----------------
+# ---------------- Snowflake Data Functions ----------------
 
 def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name: return {}
@@ -42,7 +43,6 @@ def load_user_profile(user_name: str) -> Dict[str, Any]:
         return {}
 
 def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
-    # This function is already correct
     if not user_name: return
     try:
         profile_json = json.dumps(profile_data)
@@ -62,7 +62,6 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
         st.error(f"Error saving profile: {e}")
 
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
-    # This function is already correct
     if not user_name: return pd.DataFrame()
     try:
         df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
@@ -86,46 +85,28 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
                 "PROTEIN": entry["PROTEIN"], "CARBS": entry["CARBS"], "FAT": entry["FAT"]
             })
             
-        # Define the exact columns you are inserting into
         target_columns = ["USER_NAME", "DATE", "MEAL", "FOOD", "QUANTITY", "CALORIES", "PROTEIN", "CARBS", "FAT"]
         
-        # Create a DataFrame and perform one write operation
         df_to_save = session.create_dataframe(rows_to_insert)
         
-        # <-- FIXED: Use column_order to specify which columns we are providing data for
         df_to_save.write.mode("append").save_as_table(
             "NUTRITION_LOG",
             column_order=target_columns
         )
-        
         st.cache_data.clear()
-        
+        st.session_state.error_message = None # Clear error on success
     except Exception as e:
-        # Keep the error handling to catch any other potential issues
-        print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
-        import traceback
-        print(traceback.format_exc())
-        print("--- END OF ERROR ---")
-        st.session_state.error_message = f"Failed to save data: {e}"
-    # <-- START OF MODIFIED SECTION
-    except Exception as e:
-        # 1. Print the detailed error to your terminal/console
         print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
         print(traceback.format_exc())
         print("--- END OF ERROR ---")
-        
-        # 2. Save the error message to the session state to display it in the UI
         st.session_state.error_message = f"Failed to save data: {e}"
-    # <-- END OF MODIFIED SECTION
 
 def delete_entry_from_db(entry_id: int):
-    # This function is already correct
     try:
         conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
         st.cache_data.clear()
     except Exception as e:
         st.error(f"Error deleting entry: {e}")
-
 
 # ---------------- Food Database & Calculations (No Changes) ----------------
 # [Your large food database and calculation functions go here - omitted for brevity]
@@ -246,17 +227,17 @@ def calculate_targets(base_calories: float, goal: str, weekly_change_kg: float) 
     target_calories = max(1200, target_calories)
     return {"calories": target_calories, "protein": (target_calories * 0.30) / 4, "carbs": (target_calories * 0.40) / 4, "fat": (target_calories * 0.30) / 9}
 
+
 # ---------------- Main App UI ----------------
 st.title("🍽️ Advanced Nutrition & Calorie Tracker")
 
-# <-- ADD THIS BLOCK
 # Persistent error message display
 if 'error_message' in st.session_state and st.session_state.error_message:
     st.error(st.session_state.error_message)
-    # Optional: Add a button to clear the message
     if st.button("Clear Error Message"):
         st.session_state.error_message = None
         st.rerun()
+
 if 'new_entries' not in st.session_state:
     st.session_state.new_entries = []
 
@@ -347,14 +328,15 @@ with col1:
                                     delete_entry_from_db(int(row['ID']))
                                     st.rerun()
             
-            # <-- CHANGED: The save button now calls the batch function
             if st.session_state.new_entries:
                 st.markdown("---")
                 if st.button("💾 Save Today's Log to Snowflake", use_container_width=True, type="primary"):
                     with st.spinner("Saving entries..."):
                         save_log_batch(user_name, st.session_state.new_entries)
-                    st.session_state.new_entries = []
-                    st.success("Successfully saved today's log!")
+                    # Only clear and show success if the error message is not set
+                    if not st.session_state.get("error_message"):
+                        st.session_state.new_entries = []
+                        st.success("Successfully saved today's log!")
                     st.rerun()
 
 with col2:
@@ -366,7 +348,7 @@ with col2:
             progress_ratio = totals['CALORIES'] / targets['calories'] if targets['calories'] > 0 else 0
             st.progress(min(1.0, progress_ratio), text=f"{totals['CALORIES']:.0f} / {targets['calories']:.0f} kcal")
             st.markdown("---"); st.subheader("💪 Macronutrients (grams)")
-            progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']], 'Target': [targets['protein'], targets['carbs'], targets['fat']]}, index=['Protein', 'Carbs', 'Fat'])
+            progress_df = pd.DataFrame({'Consumed': [totals['PROTEIN'], totals['CARBS'], totals['FAT']], 'Target': [targets['protein'], targets['carbs'], 'fat']}, index=['Protein', 'Carbs', 'Fat'])
             st.bar_chart(progress_df, height=300)
         else: st.info("Log your first meal to see your progress dashboard!")
     
