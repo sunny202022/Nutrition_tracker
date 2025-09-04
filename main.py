@@ -30,7 +30,8 @@ except Exception as e:
 def load_user_profile(user_name: str) -> Dict[str, Any]:
     if not user_name: return {}
     try:
-        df = conn.query('SELECT VALUE FROM USER_PROFILE WHERE KEY = ?', params=[user_name.lower()], ttl=0)
+        # Note: KEY and VALUE are also quoted to be safe
+        df = conn.query('SELECT "VALUE" FROM USER_PROFILE WHERE "KEY" = ?', params=[user_name.lower()], ttl=0)
         if not df.empty: return json.loads(df.iloc[0]["VALUE"])
         return {}
     except Exception as e:
@@ -42,6 +43,7 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
     try:
         profile_json = json.dumps(profile_data)
         session = conn.session()
+        # Snowpark handles quoting automatically here, but ensure keys are uppercase
         source_df = session.create_dataframe([(user_name.lower(), profile_json)], schema=['KEY', 'VALUE'])
         target_table = session.table("USER_PROFILE")
         target_table.merge(
@@ -59,7 +61,8 @@ def save_user_profile(user_name: str, profile_data: Dict[str, Any]):
 def load_nutrition_log(user_name: str) -> pd.DataFrame:
     if not user_name: return pd.DataFrame()
     try:
-        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE USER_NAME = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
+        # FIXED: Enclosed "USER_NAME" in double quotes to make it case-sensitive
+        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = ? ORDER BY "ID" DESC', params=[user_name.lower()], ttl=0)
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
@@ -69,8 +72,20 @@ def save_entry_to_db(user_name: str, entry: Dict[str, Any]):
     if not user_name: return
     try:
         session = conn.session()
-        entry_with_user = {"USER_NAME": user_name.lower(), **entry}
+        # FIXED: Ensure all dictionary keys are uppercase to match the table's case-sensitive columns
+        entry_with_user = {
+            "USER_NAME": user_name.lower(),
+            "DATE": entry["DATE"],
+            "MEAL": entry["MEAL"],
+            "FOOD": entry["FOOD"],
+            "QUANTITY": entry["QUANTITY"],
+            "CALORIES": entry["CALORIES"],
+            "PROTEIN": entry["PROTEIN"],
+            "CARBS": entry["CARBS"],
+            "FAT": entry["FAT"]
+        }
         df_entry = session.create_dataframe([entry_with_user])
+        # Snowpark's save_as_table will correctly map the uppercase keys to the quoted columns
         df_entry.write.mode("append").save_as_table("NUTRITION_LOG")
         st.cache_data.clear()
     except Exception as e:
@@ -78,6 +93,7 @@ def save_entry_to_db(user_name: str, entry: Dict[str, Any]):
 
 def delete_entry_from_db(entry_id: int):
     try:
+        # Using quotes on "ID" for consistency and safety
         conn.query('DELETE FROM NUTRITION_LOG WHERE "ID" = ?', params=[entry_id])
         st.cache_data.clear()
     except Exception as e:
@@ -298,6 +314,7 @@ with col1: # Food Logging & Log Display
             if st.form_submit_button("➕ Add Food to Log", use_container_width=True, type="primary"):
                 if search_food and search_food in FOOD_DB:
                     info = FOOD_DB[search_food]
+                    # This dictionary structure is fine, as the keys are mapped in the save function
                     entry = {
                         "DATE": today_str, "MEAL": meal_type, "FOOD": search_food,
                         "QUANTITY": float(quantity), "CALORIES": info["cal"] * quantity,
