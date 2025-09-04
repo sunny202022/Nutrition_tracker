@@ -92,12 +92,12 @@ def load_nutrition_log(user_name: str) -> pd.DataFrame:
         st.error("Invalid user_name parameter (should be a string).")
         return pd.DataFrame()
     try:
-        # Use quoted identifier for case-sensitive column name
         df = session.table("NUTRITION_LOG").filter(col('"USER_NAME"') == user_name).to_pandas()
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
+
 
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
     if not user_name or isinstance(user_name, list) or not entries:
@@ -108,25 +108,37 @@ def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
         for entry in entries:
             rows_to_insert.append({
                 "USER_NAME": str(user_name),
-                "DATE": entry["DATE"],
-                "MEAL": str(entry["MEAL"]),
-                "FOOD": str(entry["FOOD"]),
-                "QUANTITY": float(entry["QUANTITY"]),
-                "CALORIES": float(entry["CALORIES"]),
-                "PROTEIN": float(entry["PROTEIN"]),
-                "CARBS": float(entry["CARBS"]),
-                "FAT": float(entry["FAT"])
+                "Date": entry["DATE"],
+                "Meal": str(entry["MEAL"]),
+                "Food": str(entry["FOOD"]),
+                "Quantity": float(entry["QUANTITY"]),
+                "Calories": float(entry["CALORIES"]),
+                "Protein": float(entry["PROTEIN"]),
+                "Carbs": float(entry["CARBS"]),
+                "Fat": float(entry["FAT"])
             })
-        
-        # Use the global session object
-        df_to_save = session.create_dataframe(rows_to_insert)
+
+        schema = StructType([
+            StructField("USER_NAME", StringType()),
+            StructField("Date", DateType()),
+            StructField("Meal", StringType()),
+            StructField("Food", StringType()),
+            StructField("Quantity", FloatType()),
+            StructField("Calories", FloatType()),
+            StructField("Protein", FloatType()),
+            StructField("Carbs", FloatType()),
+            StructField("Fat", FloatType())
+        ])
+
+        df_to_save = session.create_dataframe(rows_to_insert, schema=schema)
         df_to_save.write.mode("append").save_as_table("NUTRITION_LOG")
-        
-        st.session_state.new_entries = []  # Clear unsaved entries
+        st.session_state.new_entries = []
+
     except Exception as e:
         print("--- AN ERROR OCCURRED DURING BATCH SAVE ---")
         print(traceback.format_exc())
         st.session_state.error_message = f"Failed to save data: {e}"
+
 
 def delete_entry_from_db(entry_id: int):
     if isinstance(entry_id, list):
