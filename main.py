@@ -74,11 +74,14 @@ def load_nutrition_log(user_name: str) -> pd.DataFrame:
         st.error("Invalid user_name parameter (should be a string).")
         return pd.DataFrame()
     try:
-        df = conn.query('SELECT * FROM NUTRITION_LOG WHERE "user_name" = ? ORDER BY "id" DESC', params=[user_name], ttl=0)
+        session = conn.session()
+        query = f'SELECT * FROM NUTRITION_LOG WHERE "USER_NAME" = %s ORDER BY "ID" DESC'
+        df = session.sql(query, [user_name]).to_pandas()
         return df
     except Exception as e:
         st.error(f"Error loading nutrition log: {e}")
         return pd.DataFrame()
+
 
 def save_log_batch(user_name: str, entries: List[Dict[str, Any]]):
     if not user_name or isinstance(user_name, list) or not entries:
